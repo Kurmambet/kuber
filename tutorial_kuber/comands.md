@@ -75,3 +75,21 @@ kubectl rollout undo deployment/<имя>               # откатить пос
 В Docker вы обычно управляете **контейнерами напрямую** (`run`, `stop`, `rm`). В Kubernetes вы почти никогда не трогаете поды напрямую — вы описываете **желаемое состояние** в YAML-манифесте (Deployment/Service) и отправляете его через `kubectl apply`, а дальше control-plane (тот самый scheduler/controller-manager, которые вы разворачивали на node1/node2) сам следит, чтобы реальность соответствовала описанию. Удалить под руками (`kubectl delete pod`) — это скорее "перезапустить" его: если под управляется Deployment'ом, он пересоздастся автоматически (вы это только что видели с `calico-node-pb7jr`).
 
 Если хотите, следующим шагом могу показать, как выглядит простой `Deployment` + `Service` манифест — это будет практическим мостиком от «одиночных команд» к «описательному» стилю Kubernetes.
+
+```bash
+kubectl cluster-info
+
+ps aux | grep -E 'kube-apiserver|etcd|kube-sheduler|kube-controller-manager'
+
+ps aux | grep kubelet
+
+kubectl describe node # вся инфа о нодах
+
+kubectl get ns  # namespaces
+
+kubectl auth can-i --list  # какие у меня права
+
+kubectl config current-context  # контекст = пользователь + кластер + namespace
+
+kubectl get pods -n kube-system  # поды в namespace/пространстве имен kube-system
+```
