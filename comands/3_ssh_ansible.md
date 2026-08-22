@@ -1,4 +1,4 @@
-Отличная работа — кластер живой, тестовый под получил IP из пула Calico (`10.244.135.4`) и ответил `200` на `curl localhost`. Это значит **вся** цепочка (kubeadm → CRI-O → CNI → сеть подов) работает от начала до конца.
+Кластер живой, тестовый под получил IP из пула Calico (`10.244.135.4`) и ответил `200` на `curl localhost`. Это значит **вся** цепочка (kubeadm → CRI-O → CNI → сеть подов) работает от начала до конца.
 
 ## Про `calico-node-pb7jr` — не паникуйте
 
@@ -53,3 +53,137 @@ ssh -i ~/.ssh/bm_k8s node3@192.168.56.103 hostname
 Ожидаемый вывод — три строки: `node1`, `node2`, `node3`, без единого запроса пароля.
 
 Выполните эти три шага и пришлите результат — дальше поставим Ansible на хост и напишем первый инвентори-файл с вашими тремя нодами, чтобы проверить связь командой `ansible all -m ping`.
+
+```
+
+
+
+
+
+```
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/bm_k8s -C "boostmentor-k8s" -N ""
+
+ssh-copy-id -i ~/.ssh/bm_k8s.pub node1@192.168.56.101
+ssh-copy-id -i ~/.ssh/bm_k8s.pub node2@192.168.56.102
+ssh-copy-id -i ~/.ssh/bm_k8s.pub node3@192.168.56.103
+
+ssh -i ~/.ssh/bm_k8s node1@192.168.56.101 hostname
+ssh -i ~/.ssh/bm_k8s node2@192.168.56.102 hostname
+ssh -i ~/.ssh/bm_k8s node3@192.168.56.103 hostname
+```
+
+чтобы удобнее работалось и через эти алиасы Ansible далее будет работать:
+
+```bash
+code ~/.ssh/config
+
+
+Host node1
+  HostName 127.0.0.1
+  User node1
+  Port 2201
+  IdentityFile ~/.ssh/bm_k8s
+  IdentitiesOnly yes
+
+Host node2
+  HostName 127.0.0.1
+  User node2
+  Port 2202
+  IdentityFile ~/.ssh/bm_k8s
+  IdentitiesOnly yes
+
+Host node3
+  HostName 127.0.0.1
+  User node3
+  Port 2203
+  IdentityFile ~/.ssh/bm_k8s
+  IdentitiesOnly yes
+```
+
+Раз прямой путь через host-only сеть уже работает без единого port-forwarding правила `ssh -i ~/.ssh/bm_k8s node1@192.168.56.101 hostname` — конфиг стоит сильно упростить и убрать NAT-путь совсем, чтобы не путаться в двух параллельных способах подключения:
+
+```bash
+Host node1
+  HostName 192.168.56.101
+  User node1
+  IdentityFile ~/.ssh/bm_k8s
+  IdentitiesOnly yes
+
+Host node2
+  HostName 192.168.56.102
+  User node2
+  IdentityFile ~/.ssh/bm_k8s
+  IdentitiesOnly yes
+
+Host node3
+  HostName 192.168.56.103
+  User node3
+  IdentityFile ~/.ssh/bm_k8s
+  IdentitiesOnly yes
+```
+
+раз соединение идёт через host-only сеть напрямую к самой VM (а не через NAT-проброс на хосте), гостевой sshd слушает именно 22, порт-форвардинг тут ни при чём.
+
+```
+
+
+
+
+
+```
+
+## на ноде 1
+
+```bash
+ssh node1 "sudo cp /etc/kubernetes/admin.conf /home/node1/admin.conf && sudo chown node1:node1 /home/node1/admin.conf"
+```
+
+## на локальной машине/хосте, с которого будет управляться кластер
+
+```bash
+mkdir -p ~/.kube
+scp node1:/home/node1/admin.conf ~/.kube/config
+chmod 600 ~/.kube/config
+```
+
+Копируем уже "разрешённую" копию к себе на хост и сразу ставим права 600 — этот файл даёт полный доступ администратора к кластеру, его стоит защищать так же, как приватный SSH-ключ.
+
+```bash
+ssh node1 "rm /home/node1/admin.conf"
+```
+
+Подчищаем временную копию на ноде — незачем оставлять там второй экземпляр админского конфига.
+
+# Проблема 2: на хосте нет kubectl
+
+Ставим только kubectl (не kubeadm/kubelet — они на хосте не нужны, хост не часть кластера, а просто клиент), тем же способом, что и на нодах — через официальный репозиторий pkgs.k8s.io:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+sudo mkdir -p -m 755 /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.34/deb/Release.key | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.34/deb/ /' | \
+  sudo tee /etc/apt/sources.list.d/kubernetes.list
+sudo apt-get update
+sudo apt-get install -y kubectl
+```
+
+### Версию v1.34 берём такой же, как на нодах (v1.34.11) — kubectl совместим с ±1 минорной версией сервера, но проще держать в тон, чтобы не думать об этом вообще.
+
+## Проверка
+
+```bash
+kubectl get nodes
+```
+
+Это должно сработать без флагов, потому что `kubectl` по умолчанию ищет конфиг именно в `~/.kube/config`. Сработает это благодаря тому, что ваш хост Linux Mint уже состоит в той же host-only сети (`192.168.56.0/24` через `vboxnet0`), а admin.conf внутри ссылается на `https://192.168.56.101:6443` — тот самый `--control-plane-endpoint`, который вы указывали при kubeadm init. Проверить, на какой адрес он смотрит, можно так:
+
+```bash
+grep server ~/.kube/config
+```
+
+После этого вы сможете управлять всем кластером прямо с Linux Mint, ни разу не заходя по SSH на node1
