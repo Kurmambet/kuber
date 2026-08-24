@@ -21,7 +21,7 @@ spec:
           # ВАЖНО: подставь свой образ из реестра (Docker Hub / GHCR и т.п.).
           # Локально в minikube/kind можно загрузить образ без пуша в реестр
           # (см. README) и оставить imagePullPolicy: IfNotPresent.
-          image: scott-pilgrim-quotes:1.0.0
+          image: 192.168.56.1:5000/scott-pilgrim-quotes:1.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
