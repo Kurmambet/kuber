@@ -116,6 +116,13 @@ kubectl apply -f k8s/service-clusterip.yaml
 kubectl get pods -l app=scott-pilgrim -w
 ```
 
+проверка clusterip:
+
+```bash
+kubectl run tmp --rm -it --image=curlimages/curl --restart=Never -- \
+scott-clusterip.default.svc.cluster.local/quote
+```
+
 ## Если хочется точно повторить вариант B из курса (через podman)
 
 Технически это тоже возможно — CRI-O делит общее хранилище образов именно с `podman` (не с Docker!), потому что оба используют библиотеку `containers/storage`. Пришлось бы поставить `podman` на каждую ноду: [github](https://github.com/cri-o/cri-o/issues/5696)
@@ -184,3 +191,82 @@ curl http://192.168.56.103:30080/quote
 ```
 
 Обратите внимание — NodePort открывает порт **на всех** нодах кластера одновременно (даже на той, где физически нет пода) — это одна из ключевых особенностей, которую стоит явно увидеть: postgres-запрос на node3 (где реально сидит под) и на node1 (где пода нет) должен вернуть одинаковый ответ, потому что kube-proxy сам перенаправит трафик куда нужно.
+
+После долгого простоя виртуалок у них сбивается время.
+
+```bash
+# на каждой ноде
+# sudo apt-get install -y chrony
+sudo systemctl enable --now chrony
+sudo chronyc makestep
+date
+timedatectl status
+
+# с хоста
+kubectl get pods -n kube-system | grep calico
+# если не Running, то
+kubectl delete pods -n kube-system -l k8s-app=calico-node
+```
+
+```
+
+
+
+
+
+
+```
+
+внешнее имя вместо ip
+
+```bash
+kubectl apply -f k8s/service-externalname.yaml
+```
+
+проверка :
+
+```bash
+kubectl run tmp --rm -it --image=curlimages/curl --restart=Never -- \
+scott-externalname.default.svc.cluster.local
+```
+
+## Что реально означает ExternalName
+
+Напомню механику: `ExternalName` — это **не проксирование трафика**, а просто DNS-трюк. Когда под спрашивает `scott-externalname.default.svc.cluster.local`, CoreDNS отвечает CNAME-записью `ya.ru` — и всё, дальше под сам напрямую резолвит и подключается к `ya.ru`, без какого-либо участия Kubernetes в самом соединении. Значит, `curl: (52) Empty reply from server` — это уже проблема на уровне "под ↔ реальный интернет", а не "под ↔ Service".
+
+## Наиболее вероятная причина — IPv6
+
+`ya.ru` отдаёт и IPv4, и IPv6-адреса. Современный `curl` по умолчанию предпочитает IPv6, если он доступен. А у вас в конфиге Calico явно стоит:
+
+```
+FELIX_IPV6SUPPORT: false
+```
+
+Вы это видели ещё в самом первом `kubectl describe pod calico-node`. Это значит, что IPv6-трафику из пода банально некуда маршрутизироваться наружу — TCP-соединение по IPv6 может "как бы" установиться на уровне локального стека, но реально не долетать до `ya.ru`, обрываясь без данных — отсюда и "пустой ответ".
+
+## Диагностика
+
+**С хоста:**
+
+```bash
+kubectl run tmp --rm -it --image=curlimages/curl --restart=Never -- curl -v -4 http://scott-externalname.default.svc.cluster.local
+```
+
+Разбор флагов:
+
+- `-v` — подробный вывод, покажет, по какому именно IP и протоколу curl пытался подключиться;
+- `-4` — принудительно заставляет использовать IPv4, исключая IPv6 из уравнения.
+
+Если с `-4` всё сразу заработает (увидите `HTTP/1.1 302 Found` — `ya.ru` действительно всегда редиректит с `http://` на `https://`, это нормальное поведение сайта) — гипотеза про IPv6 подтверждена, и это особенность вашей текущей сетевой настройки Calico, а не баг Kubernetes.
+
+## Дополнительно — добавить `-L`, чтобы куда следовать за редиректом
+
+```bash
+kubectl run tmp --rm -it --image=curlimages/curl --restart=Never -- curl -v -4 -L http://scott-externalname.default.svc.cluster.local
+```
+
+`-L` заставит curl автоматически перейти по `302 → https://ya.ru` и показать реальную HTML-страницу — так вы увидите полноценный успешный ответ, а не только заголовок редиректа.
+
+## Итог для понимания ExternalName в целом
+
+Если тест с `-4` пройдёт успешно — это доказывает, что сам паттерн `ExternalName` работает правильно (полезно, например, чтобы дать подам внутри кластера удобное короткое DNS-имя для внешней БД или стороннего API — типа `internal-db` вместо длинного `mydb.us-east-1.rds.amazonaws.com`). Проблема, которую вы поймали, — это побочный эффект того, что ваш кластер сознательно настроен только на IPv4 (тот самый выбор, который вы делали, изучая режимы Calico), и никак не связана с корректностью самого `Service` типа `ExternalName`.

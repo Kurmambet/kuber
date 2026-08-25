@@ -7,7 +7,7 @@ metadata:
 spec:
   # Один под — как и договаривались. Хочешь масштаб — поменяй на 3
   # и увидишь, что в ответе API меняется поле "pod".
-  replicas: 1
+  replicas: 10
   selector:
     matchLabels:
       app: scott-pilgrim
