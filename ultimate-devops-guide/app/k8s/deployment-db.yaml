@@ -19,20 +19,20 @@ spec:
     spec:
       containers:
         - name: scott-pilgrim
-          image: scott-pilgrim-quotes:1.0.0   # ⚠️ пересобери образ — в нём теперь код с БД
+          image: 192.168.56.1:5000/scott-pilgrim-quotes:1.0.0 # ⚠️ пересобери образ — в нём теперь код с БД
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           env:
             - name: DB_HOST
-              value: "REPLACE_WITH_WORKER_NODE_IP"   # ← IP ноды, где docker compose поднял postgres
+              value: "192.168.56.101" # ← IP ноды, где docker compose поднял postgres
             - name: DB_PORT
               value: "5432"
             - name: DB_USER
               value: "scott"
             - name: DB_NAME
               value: "scott"
-            - name: DB_PASSWORD                 # ← пароль приходит из Secret, НЕ лежит в этом манифесте
+            - name: DB_PASSWORD # ← пароль приходит из Secret, НЕ лежит в этом манифесте
               valueFrom:
                 secretKeyRef:
                   name: scott-db
@@ -45,7 +45,7 @@ spec:
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /readyz                     # теперь /readyz ПИНГУЕТ БД: нет БД → под NotReady
+              path: /readyz # теперь /readyz ПИНГУЕТ БД: нет БД → под NotReady
               port: 8080
             initialDelaySeconds: 2
             periodSeconds: 5
