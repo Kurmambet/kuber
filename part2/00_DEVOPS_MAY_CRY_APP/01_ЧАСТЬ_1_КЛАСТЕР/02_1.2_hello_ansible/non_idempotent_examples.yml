@@ -65,7 +65,7 @@
   changed_when: "'updated' in sync_result.stdout"
 
 # --- command vs shell vs raw: как выглядят рядом -------------------------
-- name: Run a binary directly (no shell) 
+- name: Run a binary directly (no shell)
   # command не запускает shell: pipes и redirects не интерпретируются.
   # В современных версиях expand_argument_vars отдельно подставляет $VAR.
   # Запуск из playbook — как обычная task; ad-hoc: ansible all -m command -a 'uptime'
@@ -86,25 +86,25 @@
 # выполняет каждый уникальный handler ОДИН раз — очередь дедуплицируется.
 # Пять изменённых конфигов ниже дают один restart, а не пять.
 - name: Render main config
-  ansible.builtin.template: {src: app.conf.j2, dest: /etc/app/app.conf}
+  ansible.builtin.template: { src: app.conf.j2, dest: /etc/app/app.conf }
   notify: Restart app
 
 - name: Render logging config
-  ansible.builtin.template: {src: logging.conf.j2, dest: /etc/app/logging.conf}
+  ansible.builtin.template:
+    { src: logging.conf.j2, dest: /etc/app/logging.conf }
   notify: Restart app
 
 - name: Render limits config
-  ansible.builtin.template: {src: limits.conf.j2, dest: /etc/app/limits.conf}
+  ansible.builtin.template: { src: limits.conf.j2, dest: /etc/app/limits.conf }
   notify: Restart app
 
 - name: Render auth config
-  ansible.builtin.template: {src: auth.conf.j2, dest: /etc/app/auth.conf}
+  ansible.builtin.template: { src: auth.conf.j2, dest: /etc/app/auth.conf }
   notify: Restart app
 
 - name: Render routes config
-  ansible.builtin.template: {src: routes.conf.j2, dest: /etc/app/routes.conf}
+  ansible.builtin.template: { src: routes.conf.j2, dest: /etc/app/routes.conf }
   notify: Restart app
-
 # handlers:
 #   - name: Restart app
 #     ansible.builtin.service: {name: app, state: restarted}
