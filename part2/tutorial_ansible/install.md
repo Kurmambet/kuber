@@ -8,7 +8,13 @@ uv tool install --with-executables-from ansible-core ansible
 uv tool update-shell
 exec $SHELL -l
 
+# which ansible ansible-lint
+
 ansible --version
+# ansible-lint --version
+
+
+# uv tool install --force --with ansible-lint --with-executables-from ansible-core,ansible-lint ansible ненадо это выполнять. это переустановит инструмент.
 ```
 
 - Пакет `ansible` сам не даёт команд, это набор коллекций поверх `ansible-core`. Поэтому нужен флаг `--with-executables-from ansible-core`. Он выставляет в PATH `ansible`, `ansible-playbook`, `ansible-galaxy`, `ansible-vault` и остальные. Без него uv скажет, что у пакета нет исполняемых файлов.
